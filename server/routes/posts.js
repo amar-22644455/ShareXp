@@ -7,18 +7,13 @@ const Post = require('../models/posts');
 const User = require('../models/users');
 const multer = require("multer");
 
+const { uploadMedia } = require('../config/cloudinary');
+
 const POST_UPLOAD_LIMIT_MB = Number(process.env.POST_UPLOAD_LIMIT_MB || 25);
 const POST_UPLOAD_LIMIT_BYTES = POST_UPLOAD_LIMIT_MB * 1024 * 1024;
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Save files in "uploads" directory
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname); // Unique filename
-  },
-});
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -65,13 +60,17 @@ router.post(
       const { user } = req;
       const { text = "" } = req.body; // Ensure text is always a string (even empty)
       const file = req.file;
-      const media = file ? {
-        url: `/uploads/${file.filename}`,
-        fileType: file.mimetype.startsWith("image") ? "image" :
-                  file.mimetype.startsWith("video") ? "video" : 
-                  "document",
-        size: file.size,
-      } : null;
+      let media = null;
+      if (file) {
+        const mediaUrl = await uploadMedia(file, "uploads");
+        media = {
+          url: mediaUrl,
+          fileType: file.mimetype.startsWith("image") ? "image" :
+                    file.mimetype.startsWith("video") ? "video" : 
+                    "document",
+          size: file.size,
+        };
+      }
   
       // Create a new post
       const post = new Post({

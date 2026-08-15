@@ -7,7 +7,8 @@ const getSocketUrl = () => {
   if (import.meta.env.DEV) {
     return "http://localhost:5000";
   }
-  return window.location.origin;
+  // In production, fallback to deployed Render backend URL if VITE_SOCKET_URL is missing
+  return "https://semester1-backend-of1b.onrender.com";
 };
 
 export const createSocket = (options = {}) => {

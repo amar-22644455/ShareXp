@@ -114,8 +114,19 @@ app.use('/api', (req, res, next) => {
   globalRateLimiter(req, res, next);
 });
 
-app.use("/uploads", express.static("uploads"));
-app.use('/profile-images', express.static("profile-images"));
+const fs = require('fs');
+const path = require('path');
+
+// Ensure local upload directories exist at server boot
+['uploads', 'profile-images'].forEach(dir => {
+  const dirPath = path.join(__dirname, dir);
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+});
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use('/profile-images', express.static(path.join(__dirname, "profile-images")));
 // Disable caching for all API responses to prevent back-button data exposure
 app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

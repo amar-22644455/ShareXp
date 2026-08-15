@@ -11,19 +11,13 @@ const Post = require('../models/posts');
 const Notification = require('../models/notification'); // Adjust path as needed
 
 const multer = require("multer");
+const { uploadMedia } = require('../config/cloudinary');
 
 const PROFILE_IMAGE_LIMIT_MB = Number(process.env.PROFILE_IMAGE_LIMIT_MB || 5);
 const PROFILE_IMAGE_LIMIT_BYTES = PROFILE_IMAGE_LIMIT_MB * 1024 * 1024;
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "profile-images/"); // Save files in "uploads" directory
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname); // Unique filename
-  },
-});
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -84,13 +78,15 @@ router.patch(
       console.log('File uploaded successfully:', {
         originalname: req.file.originalname,
         mimetype: req.file.mimetype,
-        size: req.file.size,
-        filename: req.file.filename
+        size: req.file.size
       });
 
-      // 4. Update user
+      // 4. Upload via Cloudinary/Local helper
+      const imageUrl = await uploadMedia(req.file, 'profile-images');
+
+      // 5. Update user
       console.log('Updating user profile image...');
-      const updateData = { profileImage: req.file.filename };
+      const updateData = { profileImage: imageUrl };
       console.log('Update data being sent:', updateData);
 
       const updatedUser = await User.findByIdAndUpdate(
