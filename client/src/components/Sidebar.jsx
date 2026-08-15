@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Home, Search, Bell, Award, User, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { io } from "socket.io-client";
+import createSocket from "@/config/socket";
 
 export default function Sidebar({ unreadCountProp }) {
   const location = useLocation();
@@ -39,9 +39,7 @@ export default function Sidebar({ unreadCountProp }) {
     fetchUnreadCount();
 
     // Setup real-time notifications listener
-    const socket = io({
-      transports: ["websocket"],
-    });
+    const socket = createSocket();
 
     socket.emit("join", `user_${currentUserId}`);
 

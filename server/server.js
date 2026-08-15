@@ -11,8 +11,27 @@ require('dotenv').config();
 const PORT = process.env.PORT || 5000;
 connectDB();
 const app = express();
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:5000",
+  process.env.CLIENT_URL
+].filter(Boolean).map(url => url.replace(/\/$/, ""));
+
+const corsOriginHandler = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  const normalizedOrigin = origin.replace(/\/$/, "");
+  if (
+    allowedOrigins.includes(normalizedOrigin) ||
+    process.env.NODE_ENV !== 'production'
+  ) {
+    return callback(null, true);
+  }
+  return callback(null, true);
+};
+
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: corsOriginHandler,
   credentials: true
 }));
 
@@ -26,11 +45,11 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Download-Options', 'noopen');
   res.setHeader('X-DNS-Prefetch-Control', 'off');
-  // Content Security Policy to secure script, styling and connection domains
-  res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: http://localhost:5000; connect-src 'self' ws://localhost:5000 http://localhost:5000 ws://localhost:5173 http://localhost:5173; font-src 'self' https://fonts.gstatic.com;"
-  );
+  
+  const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, "");
+  const cspHeader = `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: http: https:; connect-src 'self' ws: wss: http: https: ${clientUrl}; font-src 'self' https://fonts.gstatic.com;`;
+  
+  res.setHeader('Content-Security-Policy', cspHeader);
   next();
 });
 
@@ -115,7 +134,7 @@ const server = http.createServer(app);
 // websocket require actual http server, so we create it using the http module and pass our Express app to it. Then we initialize Socket.IO with this server. This allows us to handle both HTTP requests and WebSocket connections on the same server instance.
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: corsOriginHandler,
     methods: ["GET", "POST"],
     credentials: true
   },

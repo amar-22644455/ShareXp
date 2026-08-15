@@ -22,7 +22,7 @@ const UserSchema = new mongoose.Schema({
   skills: [String], // Example: ["C++", "React", "Machine Learning"]
   description: { type: String, default: "Hello! I am using ShareXP." }, // New Description Field
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // List of user IDs following this user
-  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // List of user IDs this user follows
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // List of us er IDs this user follows
   unreadNotifications: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });

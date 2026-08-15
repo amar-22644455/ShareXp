@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from "react-router-dom";
 import { ThumbsUp, MessageCircle, UserPlus } from 'lucide-react';
-import io from 'socket.io-client';
+import createSocket from '@/config/socket';
 import Sidebar from '../components/Sidebar';
 
 
@@ -26,11 +26,7 @@ export default function NotificationComponent() {
   useEffect(() => {
     if (!currentUser?._id) return;
 
-    const newSocket = io({
-      withCredentials: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
+    const newSocket = createSocket();
 
     // Join user's personal room
     newSocket.emit('join', `user_${currentUser._id}`);

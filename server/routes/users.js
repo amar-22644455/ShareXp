@@ -464,33 +464,46 @@ router.post("/follow/:id", auth, async (req, res) => {
       return res.status(400).json({ message: "You cannot follow yourself" });
     }
 
-    const [loggedInUser, targetUser] = await Promise.all([
-      User.findById(loggedInUserId).select('following username profileImage'),
-      User.findById(targetUserId).select('followers unreadNotifications'),
-    ]);
+    // 1. Try to atomically add the target user to the logged-in user's following list.
+    // If targetUserId is not already in the array, the filter matches and pushes it.
+    const loggedInUser = await User.findOneAndUpdate(
+      { _id: loggedInUserId, following: { $ne: targetUserId } },
+      { $addToSet: { following: targetUserId } },
+      { new: true, select: 'following username profileImage' }
+    );
 
-    if (!loggedInUser || !targetUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    let isFollowing;
+    let updatedFollowerCount;
 
-    const isCurrentlyFollowing = loggedInUser.following.includes(targetUserId);
+    if (loggedInUser) {
+      // ---> FOLLOW ACTION <--- (User was not following previously)
+      isFollowing = true;
 
-    if (isCurrentlyFollowing) {
-      loggedInUser.following.pull(targetUserId);
-      targetUser.followers.pull(loggedInUserId);
-    } else {
-      loggedInUser.following.push(targetUserId);
-      targetUser.followers.push(loggedInUserId);
+      // 2. Add logged-in user to the target user's followers array and increment notification count
+      const targetUser = await User.findOneAndUpdate(
+        { _id: targetUserId },
+        { 
+          $addToSet: { followers: loggedInUserId },
+          $inc: { unreadNotifications: 1 }
+        },
+        { new: true, select: 'followers' }
+      );
 
-      // Always save notification to DB so it persists across page navigations
+      if (!targetUser) {
+        // Rollback follow action if the target user doesn't exist
+        await User.updateOne({ _id: loggedInUserId }, { $pull: { following: targetUserId } });
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      updatedFollowerCount = targetUser.followers.length;
+
+      // 3. Save notification & emit socket event
       const savedNotification = await Notification.create({
         recipient: targetUserId,
         sender: loggedInUserId,
         type: 'follow'
       });
-      targetUser.unreadNotifications += 1;
 
-      // Also try real-time delivery with populated sender data
       const notificationData = {
         _id: savedNotification._id,
         type: 'follow',
@@ -503,14 +516,35 @@ router.post("/follow/:id", auth, async (req, res) => {
         read: false
       };
       sendRealTimeNotification(io, targetUserId, notificationData);
-    }
 
-    await Promise.all([loggedInUser.save(), targetUser.save()]);
+    } else {
+      // ---> UNFOLLOW ACTION <--- (User was already following target)
+      isFollowing = false;
+
+      // Remove from both lists atomically
+      const [_, updatedTargetUser] = await Promise.all([
+        User.findOneAndUpdate(
+          { _id: loggedInUserId },
+          { $pull: { following: targetUserId } }
+        ),
+        User.findOneAndUpdate(
+          { _id: targetUserId },
+          { $pull: { followers: loggedInUserId } },
+          { new: true, select: 'followers' }
+        )
+      ]);
+
+      if (!updatedTargetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      updatedFollowerCount = updatedTargetUser.followers.length;
+    }
 
     res.json({
       success: true,
-      isFollowing: !isCurrentlyFollowing,
-      updatedFollowerCount: targetUser.followers.length,
+      isFollowing,
+      updatedFollowerCount,
     });
 
   } catch (error) {
@@ -651,14 +685,18 @@ router.post('/actions', auth, [
     switch (actionType) {
       case 'like':
         console.log('Processing LIKE action...');
-        if (post.likes.includes(senderId)) {
-          console.log('User already liked this post');
+        const updatedPost = await Post.findOneAndUpdate(
+          { _id: postId, likes: { $ne: senderId } },
+          { $addToSet: { likes: senderId } },
+          { new: true }
+        );
+
+        if (!updatedPost) {
+          console.log('User already liked this post or post not found');
           return res.status(400).json({ msg: 'Post already liked' });
         }
 
-        post.likes.push(senderId);
-        await post.save();
-        console.log('Post liked successfully. Updated likes:', post.likes);
+        console.log('Post liked successfully. Updated likes:', updatedPost.likes);
 
         if (!isSelfAction) {
           console.log('Creating like notification...');
@@ -668,7 +706,7 @@ router.post('/actions', auth, [
             recipient: recipientId,
             sender: sender._id,
             type: 'like',
-            post: post._id
+            post: updatedPost._id
           });
           await User.findByIdAndUpdate(recipientId, {
             $inc: { unreadNotifications: 1 }
@@ -683,7 +721,7 @@ router.post('/actions', auth, [
               username: sender.username,
               profileImage: sender.profileImage
             },
-            post: { _id: post._id, media: post.media },
+            post: { _id: updatedPost._id, media: updatedPost.media },
             createdAt: savedNotification.createdAt,
             read: false
           };
@@ -693,20 +731,24 @@ router.post('/actions', auth, [
 
         return res.json({ 
           msg: 'Post liked', 
-          likes: post.likes,
-          username: post.username // From Post schema
+          likes: updatedPost.likes,
+          username: updatedPost.username // From Post schema
         });
 
       case 'unlike':
         console.log('Processing UNLIKE action...');
-        if (!post.likes.includes(senderId)) {
-          console.log('User has not liked this post yet');
+        const unlikedPost = await Post.findOneAndUpdate(
+          { _id: postId, likes: senderId },
+          { $pull: { likes: senderId } },
+          { new: true }
+        );
+
+        if (!unlikedPost) {
+          console.log('User has not liked this post yet or post not found');
           return res.status(400).json({ msg: 'Post not liked yet' });
         }
 
-        post.likes = post.likes.filter(id => id.toString() !== senderId.toString());
-        await post.save();
-        console.log('Post unliked successfully. Updated likes:', post.likes);
+        console.log('Post unliked successfully. Updated likes:', unlikedPost.likes);
 
         if (!isSelfAction) {
           console.log('Removing like notification...');
@@ -714,15 +756,15 @@ router.post('/actions', auth, [
             recipient: recipientId,
             sender: sender._id,
             type: 'like',
-            post: post._id
+            post: unlikedPost._id
           });
           console.log('Notification deletion result:', result);
         }
 
         return res.json({ 
           msg: 'Post unliked', 
-          likes: post.likes,
-          username: post.username // From Post schema
+          likes: unlikedPost.likes,
+          username: unlikedPost.username // From Post schema
         });
 
         case 'comment':
@@ -733,8 +775,6 @@ router.post('/actions', auth, [
           }
         
           try {
-            // First get the sender's user document to ensure we have all required field
-        
             // Create properly structured comment
             const newComment = {
               text: commentText.trim(),
@@ -744,12 +784,19 @@ router.post('/actions', auth, [
               createdAt: new Date()
             };
         
-            // Add comment to post
-            post.comments.push(newComment);
-            await post.save();
+            // Add comment to post atomically
+            const updatedPost = await Post.findOneAndUpdate(
+              { _id: postId },
+              { $push: { comments: newComment } },
+              { new: true }
+            );
+
+            if (!updatedPost) {
+              return res.status(404).json({ msg: 'Post not found' });
+            }
             
-            console.log('Comment added to post. Total comments:', post.comments.length);
-            const newCommentId = post.comments[post.comments.length - 1]._id;
+            console.log('Comment added to post. Total comments:', updatedPost.comments.length);
+            const newCommentId = updatedPost.comments[updatedPost.comments.length - 1]._id;
         
             // Notification handling (unchanged)
             if (!isSelfAction) {
@@ -760,7 +807,7 @@ router.post('/actions', auth, [
                 recipient: recipientId,
                 sender: sender._id,
                 type: 'comment',
-                post: post._id,
+                post: updatedPost._id,
                 commentId: newCommentId
               });
               await User.findByIdAndUpdate(recipientId, {
@@ -776,7 +823,7 @@ router.post('/actions', auth, [
                   username: sender.username,
                   profileImage: sender.profileImage
                 },
-                post: { _id: post._id, media: post.media },
+                post: { _id: updatedPost._id, media: updatedPost.media },
                 commentId: newCommentId,
                 createdAt: savedNotification.createdAt,
                 read: false
@@ -795,7 +842,7 @@ router.post('/actions', auth, [
               msg: 'Comment added',
               comment: populatedPost.comments.id(newCommentId),
               comments: populatedPost.comments,
-              username: post.username
+              username: updatedPost.username
             });
         
           } catch (err) {

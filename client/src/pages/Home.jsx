@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
-import { io } from "socket.io-client";
+import createSocket from "@/config/socket";
 import Button from "@/components/ui/button";
 import image from "@/assets/image.png";
 import skill from "@/assets/skill.jpg";
@@ -10,9 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import profile from "@/assets/profile.jpg";
 import Sidebar from "@/components/Sidebar";
 
-const socket = io({
-  transports: ["websocket"],
-});
+const socket = createSocket();
 
 export default function Home() {
   const { id } = useParams();
