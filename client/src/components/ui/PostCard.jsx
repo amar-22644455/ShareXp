@@ -267,6 +267,10 @@ export default function PostCard({ post, onDelete }) {
               src={post.media.url}
               alt="Post Media"
               className="w-full max-h-[450px] rounded-lg object-cover mb-4"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.style.display = "none";
+              }}
             />
           ) : post.media.fileType === "video" ? (
             <video controls className="w-full rounded-lg max-h-80 object-cover mb-4">
