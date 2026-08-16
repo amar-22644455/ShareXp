@@ -29,7 +29,9 @@ const saveToLocalStorage = (file, folder) => {
   const filePath = path.join(localDirPath, filename);
   fs.writeFileSync(filePath, file.buffer);
 
-  return `/${folder}/${filename}`;
+  const localUrl = `/${folder}/${filename}`;
+  console.log(`[LOCAL STORAGE FALLBACK] Saved ${file.originalname} to ${localUrl}`);
+  return localUrl;
 };
 
 /**
@@ -39,11 +41,18 @@ const saveToLocalStorage = (file, folder) => {
  * @returns {Promise<String>} Public URL of uploaded image/file
  */
 const uploadMedia = async (file, folder = 'uploads') => {
-  if (!file) return null;
+  if (!file) {
+    console.log("[MEDIA UPLOAD] No file provided.");
+    return null;
+  }
+
+  console.log(`\n========================================`);
+  console.log(`[MEDIA UPLOAD START] File: ${file.originalname} (${file.size} bytes), Folder: ${folder}`);
 
   const config = getCloudinaryConfig();
 
   if (config.isConfigured) {
+    console.log(`[CLOUDINARY CONFIG] Cloudinary IS configured. Cloud Name: ${config.cloudName || 'Using CLOUDINARY_URL'}`);
     try {
       if (config.cloudinaryUrl) {
         cloudinary.config();
@@ -69,18 +78,25 @@ const uploadMedia = async (file, folder = 'uploads') => {
         uploadStream.end(file.buffer);
       });
 
-      console.log(`Successfully uploaded ${file.originalname} to Cloudinary:`, secureUrl);
+      console.log(`[CLOUDINARY SUCCESS] Successfully uploaded to Cloudinary: ${secureUrl}`);
+      console.log(`========================================\n`);
       return secureUrl;
     } catch (cloudinaryError) {
       console.error(
-        "Cloudinary upload failed, falling back to local storage:",
-        cloudinaryError.message || cloudinaryError
+        `[CLOUDINARY ERROR] Upload failed: ${cloudinaryError.message || cloudinaryError}`
       );
-      return saveToLocalStorage(file, folder);
+      console.log(`[CLOUDINARY FALLBACK] Falling back to local storage...`);
+      const fallbackUrl = saveToLocalStorage(file, folder);
+      console.log(`========================================\n`);
+      return fallbackUrl;
     }
+  } else {
+    console.log(`[CLOUDINARY CONFIG] Cloudinary is NOT configured. Missing CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET.`);
+    console.log(`[CLOUDINARY FALLBACK] Saving directly to local storage...`);
+    const fallbackUrl = saveToLocalStorage(file, folder);
+    console.log(`========================================\n`);
+    return fallbackUrl;
   }
-
-  return saveToLocalStorage(file, folder);
 };
 
 module.exports = {

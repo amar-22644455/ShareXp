@@ -56,13 +56,14 @@ router.post(
     }
 
     try {
-      // Extract data from authenticated user
       const { user } = req;
-      const { text = "" } = req.body; // Ensure text is always a string (even empty)
+      const { text = "" } = req.body;
       const file = req.file;
+      console.log(`\n[POST CREATION REQUEST] User: ${user ? user.username : 'Unknown'} (${user ? user._id : 'N/A'}), Text: "${text}", File: ${file ? file.originalname : 'None'}`);
       let media = null;
       if (file) {
         const mediaUrl = await uploadMedia(file, "uploads");
+        console.log(`[POST CREATION RESULT] Final Media URL to be saved in DB: ${mediaUrl}`);
         media = {
           url: mediaUrl,
           fileType: file.mimetype.startsWith("image") ? "image" :
