@@ -77,13 +77,13 @@ export default function Home() {
     fetchData();
 
     // Socket.io for real-time updates
-    const handleNewPost = (newPost) => {
+    const handleNewPost = (incomingPost) => {
+      if (!incomingPost) return;
       setFeedPosts(prevPosts => {
-        // Avoid duplicates
-        if (!prevPosts.some(post => post._id === newPost._id)) {
-          return [newPost, ...prevPosts];
-        }
-        return prevPosts;
+        const incomingId = String(incomingPost._id || incomingPost.id || '');
+        const exists = prevPosts.some(p => String(p._id || p.id || '') === incomingId);
+        if (exists) return prevPosts;
+        return [incomingPost, ...prevPosts];
       });
     };
 
@@ -125,16 +125,17 @@ export default function Home() {
 
       const newPost = await response.json();
       
-      // Add to feed posts
-      setFeedPosts(prev => [newPost, ...prev]);
+      // Add to feed posts cleanly with strict ID deduplication
+      setFeedPosts(prev => {
+        const newId = String(newPost._id || newPost.id || '');
+        const exists = prev.some(p => String(p._id || p.id || '') === newId);
+        return exists ? prev : [newPost, ...prev];
+      });
       
       // Reset form fields
       setPostText("");
       setFile(null);
       setPreview(null);
-      
-      // Emit socket event to notify followers
-      socket.emit("newPost", newPost);
     } catch (error) {
       console.error("Error creating post:", error);
       alert(error.message);
