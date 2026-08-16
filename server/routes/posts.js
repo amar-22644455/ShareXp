@@ -104,8 +104,8 @@ router.post(
       // Return created post
       res.status(201).json(formattedPost);
     } catch (err) {
-      console.error(err.message);
-      res.status(500).json({ message: 'Server Error' });
+      console.error("Error creating post:", err);
+      res.status(500).json({ message: err.message || 'Server Error' });
     }
   }
 );
