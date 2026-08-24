@@ -17,7 +17,8 @@ export function AuthProvider({ children }) {
           credentials: 'same-origin', // ensure cookie is sent
           cache: 'no-store'           // never serve a cached session check
         });
-        if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setCurrentUser(data);
           localStorage.setItem('userId', data.id);
@@ -27,6 +28,8 @@ export function AuthProvider({ children }) {
         }
       } catch (error) {
         console.error("Failed to fetch user:", error);
+        setCurrentUser(null);
+        localStorage.removeItem('userId');
       } finally {
         setLoading(false);
       }
@@ -36,19 +39,64 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    const response = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin', // ensure cookie is received and stored
-      body: JSON.stringify({ email, password })
-    });
-    const data = await response.json();
-    if (response.ok) {
-      localStorage.setItem('userId', data.user.id);
-      setCurrentUser(data.user);
-      navigate(`/home/${data.user.id}`);
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin', // ensure cookie is received and stored
+        body: JSON.stringify({ email, password })
+      });
+      
+      let data = {};
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || `Server error (${response.status})` };
+      }
+
+      if (response.ok && data.user) {
+        localStorage.setItem('userId', data.user.id);
+        setCurrentUser(data.user);
+        navigate(`/home/${data.user.id}`);
+      } else if (!data.message) {
+        data.message = `Login failed (${response.status})`;
+      }
+      return data;
+    } catch (err) {
+      console.error("Login error:", err);
+      return { message: err.message || "Network error. Please try again." };
     }
-    return data;
+  };
+
+  const guestLogin = async () => {
+    try {
+      const response = await fetch('/api/auth/guest-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+      });
+
+      let data = {};
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || `Server error (${response.status})` };
+      }
+
+      if (response.ok && data.user) {
+        localStorage.setItem('userId', data.user.id);
+        setCurrentUser(data.user);
+        navigate(`/home/${data.user.id}`);
+      }
+      return data;
+    } catch (err) {
+      console.error("Guest login error:", err);
+      return { message: err.message || "Failed to login as guest" };
+    }
   };
 
   const logout = async () => {
@@ -65,6 +113,7 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     login,
+    guestLogin,
     logout,
     loading
   };

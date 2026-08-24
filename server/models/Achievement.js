@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const achievementSchema = new mongoose.Schema(
   {
-    // ================= OWNER =================
+
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -10,7 +10,7 @@ const achievementSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ================= CATEGORY =================
+   
     category: {
       type: String,
       enum: ["Technical", "Cultural", "Sports", "Academic"],
@@ -18,7 +18,7 @@ const achievementSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ================= TITLE =================
+   
     title: {
       type: String,
       required: true,
@@ -26,7 +26,7 @@ const achievementSchema = new mongoose.Schema(
       maxlength: 120,
     },
 
-    // ================= DESCRIPTION =================
+    
     description: {
       type: String,
       required: true,
@@ -34,14 +34,14 @@ const achievementSchema = new mongoose.Schema(
       maxlength: 1000,
     },
 
-    // ================= DISPLAY DATE =================
+    
     date: {
       type: String, // e.g. "Jan 2024"
       required: true,
       trim: true,
     },
 
-    // ================= OPTIONAL MEDIA =================
+    
     certificateUrl: {
       type: String,
       trim: true,
@@ -54,15 +54,14 @@ const achievementSchema = new mongoose.Schema(
       match: /^https?:\/\/.+/i,
     },
 
-    // ================= TAGS =================
+    
     tags: {
       type: [String],
       default: [],
       set: tags =>
         tags.map(tag => tag.toLowerCase().trim()),
     },
-
-    // ================= VISIBILITY =================
+    
     isPublic: {
       type: Boolean,
       default: true,
@@ -73,7 +72,7 @@ const achievementSchema = new mongoose.Schema(
   }
 );
 
-/* ================= INDEXES ================= */
+
 
 // Fast sorting + filtering
 achievementSchema.index({ user: 1, createdAt: -1 });

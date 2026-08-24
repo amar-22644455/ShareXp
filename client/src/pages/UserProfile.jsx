@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import profile from "@/assets/profile.jpg";
 import PostThumbnail from "@/components/PostThumbnail";
 import Sidebar from "@/components/Sidebar";
-import { GraduationCap, Award } from "lucide-react";
+import { GraduationCap, Award, MessageSquare } from "lucide-react";
 export default function UserProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -94,6 +94,22 @@ export default function UserProfile() {
     }
   };
 
+  const handleMessageUser = async () => {
+    try {
+      const response = await fetch('/api/chats/find-or-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientId: id })
+      });
+      if (response.ok) {
+        const chat = await response.json();
+        navigate(`/chat/${currentUserId}/${chat._id}`);
+      }
+    } catch (err) {
+      console.error('Failed to initiate chat:', err);
+    }
+  };
+
   if (isLoading) return (
     <div className="flex justify-center items-center h-screen">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#9e4635]"></div>
@@ -135,14 +151,22 @@ export default function UserProfile() {
               <h1 className="text-xl font-bold text-gray-900 m-0">{user.username}</h1>
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
                 {currentUserId !== id && (
-                  <button 
-                    onClick={handleFollow}
-                    className={`px-5 py-1.5 rounded-xl font-medium text-xs border-none cursor-pointer transition-colors shadow-sm ${
-                      isFollowing ? "bg-red-500 hover:bg-red-600 text-white" : "bg-[#9e4635] hover:bg-[#8f3a2c] text-white"
-                    }`}
-                  >
-                    {isFollowing ? "Unfollow" : "Follow"}
-                  </button>
+                  <>
+                    <button 
+                      onClick={handleFollow}
+                      className={`px-5 py-1.5 rounded-xl font-medium text-xs border-none cursor-pointer transition-colors shadow-sm ${
+                        isFollowing ? "bg-red-500 hover:bg-red-600 text-white" : "bg-[#9e4635] hover:bg-[#8f3a2c] text-white"
+                      }`}
+                    >
+                      {isFollowing ? "Unfollow" : "Follow"}
+                    </button>
+                    <button
+                      onClick={handleMessageUser}
+                      className="px-4 py-1.5 bg-[#9e4635] hover:bg-[#8f3a2c] text-white rounded-xl font-medium text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm border-none"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" /> Message
+                    </button>
+                  </>
                 )}
                 <Link 
                   to={`/achievements/${id}`}

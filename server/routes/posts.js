@@ -193,46 +193,87 @@ router.get("/post-view/:postId", auth, async (req, res) => {
 // routes/postRoutes.js
 router.get('/following', auth, async (req, res) => {
   try {
-    console.log('[Following Feed] Starting request processing');
-    console.log(`[Following Feed] Authenticated user ID: ${req.user._id}`);
-
-    // 1. Get the current user with their following list
-    console.log('[Following Feed] Fetching current user following list');
-    const currentUser = await User.findById(req.user._id)
-      .select('following');
-    
+    const currentUser = await User.findById(req.user._id).select('following institute');
     if (!currentUser) {
-      console.log('[Following Feed] Current user not found in database');
       return res.status(404).json({ message: 'User not found' });
     }
-    console.log(`[Following Feed] Found ${currentUser.following?.length || 0} users being followed`);
 
-    // 2. Get posts from users they follow (including their own posts)
-    const followingIds = [...currentUser.following, req.user._id];
-    console.log(`[Following Feed] Fetching posts from ${followingIds.length} users (including self)`);
-    
-    const posts = await Post.find({
+    const followingIds = [...(currentUser.following || []), req.user._id];
+
+    // 1. Get posts from users they follow (including their own posts)
+    let followedPosts = await Post.find({
       userId: { $in: followingIds }
     })
-    .sort({ createdAt: -1 })
-    .populate('userId', 'name username profileImage institute')
-    .populate('comments.userId', 'username profileImage')
-    .lean();
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name username profileImage institute')
+      .populate('comments.userId', 'username profileImage')
+      .lean();
 
-    console.log(`[Following Feed] Found ${posts.length} posts`);
-    
-    // 3. Format response with engagement metrics
-    console.log('[Following Feed] Formatting response data');
-    const formattedPosts = posts.map(post => {
+    const seenPostIds = new Set(followedPosts.map(p => p._id.toString()));
+    let recommendedPosts = [];
+
+    // 2. Cold-Start / College Recommendation: Fetch posts from same college
+    if (currentUser.institute) {
+      const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const instRegex = new RegExp(`^${escapeRegex(currentUser.institute.trim())}$`, 'i');
+
+      const collegeUsers = await User.find({
+        _id: { $nin: followingIds },
+        institute: instRegex
+      }).select('_id');
+
+      const collegeUserIds = collegeUsers.map(u => u._id);
+
+      if (collegeUserIds.length > 0) {
+        const sameCollegePosts = await Post.find({
+          userId: { $in: collegeUserIds },
+          _id: { $nin: Array.from(seenPostIds) }
+        })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .populate('userId', 'name username profileImage institute')
+          .populate('comments.userId', 'username profileImage')
+          .lean();
+
+        sameCollegePosts.forEach(p => {
+          seenPostIds.add(p._id.toString());
+          recommendedPosts.push({
+            ...p,
+            isRecommended: true,
+            recommendationReason: `Suggested from ${currentUser.institute}`
+          });
+        });
+      }
+    }
+
+    // 3. Discovery Fallback: If feed has fewer than 10 posts, fetch top/recent global posts
+    if (followedPosts.length + recommendedPosts.length < 10) {
+      const globalPosts = await Post.find({
+        _id: { $nin: Array.from(seenPostIds) }
+      })
+        .sort({ createdAt: -1 })
+        .limit(10 - (followedPosts.length + recommendedPosts.length))
+        .populate('userId', 'name username profileImage institute')
+        .populate('comments.userId', 'username profileImage')
+        .lean();
+
+      globalPosts.forEach(p => {
+        seenPostIds.add(p._id.toString());
+        recommendedPosts.push({
+          ...p,
+          isRecommended: true,
+          recommendationReason: "Recommended for you"
+        });
+      });
+    }
+
+    const allFeedPosts = [...followedPosts, ...recommendedPosts];
+
+    const formattedPosts = allFeedPosts.map(post => {
       const isLiked = post.likes?.some(like => like.equals(req.user._id)) || false;
       const likeCount = post.likes?.length || 0;
       const commentCount = post.comments?.length || 0;
-      
-      console.log(`[Following Feed] Post ${post._id}: 
-        Likes: ${likeCount}, 
-        Comments: ${commentCount}, 
-        Current User Liked: ${isLiked}`);
-      
+
       return {
         ...post,
         isLiked,
@@ -241,33 +282,15 @@ router.get('/following', auth, async (req, res) => {
       };
     });
 
-    console.log('[Following Feed] Successfully processed request');
     res.status(200).json({
       success: true,
       posts: formattedPosts
     });
-
   } catch (error) {
-    console.error('[Following Feed] Error:', {
-      timestamp: new Date().toISOString(),
-      userId: req.user?._id,
-      errorDetails: {
-        message: error.message,
-        stack: error.stack,
-        type: error.name
-      },
-      requestDetails: {
-        method: req.method,
-        path: req.path,
-        query: req.query,
-        params: req.params
-      }
-    });
-    
-    res.status(500).json({ 
+    console.error('[Following Feed] Error:', error);
+    res.status(500).json({
       success: false,
-      message: 'Failed to fetch feed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      message: 'Failed to fetch feed'
     });
   }
 });

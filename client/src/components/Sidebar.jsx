@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, Search, Bell, Award, User, LogOut } from "lucide-react";
+import { Home, Search, Bell, MessageSquare, Award, User, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import createSocket from "@/config/socket";
 
@@ -9,6 +9,7 @@ export default function Sidebar({ unreadCountProp }) {
   const { logout } = useAuth();
   const currentUserId = localStorage.getItem("userId");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   // Sync with parent prop if provided (used on the Notifications page)
   useEffect(() => {
@@ -19,10 +20,10 @@ export default function Sidebar({ unreadCountProp }) {
 
   // Handle initial fetch & real-time updates when on other pages
   useEffect(() => {
-    if (unreadCountProp !== undefined) return; // Parent is managing it
     if (!currentUserId) return;
 
-    const fetchUnreadCount = async () => {
+    const fetchUnreadNotifications = async () => {
+      if (unreadCountProp !== undefined) return;
       try {
         const response = await fetch("/api/notifications/all");
         if (response.ok) {
@@ -36,9 +37,22 @@ export default function Sidebar({ unreadCountProp }) {
       }
     };
 
-    fetchUnreadCount();
+    const fetchUnreadChats = async () => {
+      try {
+        const response = await fetch("/api/chats/unread-count");
+        if (response.ok) {
+          const data = await response.json();
+          setUnreadChatCount(data.unreadCount || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching unread chat count in Sidebar:", err);
+      }
+    };
 
-    // Setup real-time notifications listener
+    fetchUnreadNotifications();
+    fetchUnreadChats();
+
+    // Setup real-time notifications & chat listeners
     const socket = createSocket();
 
     socket.emit("join", `user_${currentUserId}`);
@@ -49,10 +63,26 @@ export default function Sidebar({ unreadCountProp }) {
       }
     });
 
+    socket.on("receive_message", (message) => {
+      // If message is from someone else and current page is not active chat, increment unread count
+      if (message.sender?._id !== currentUserId && message.sender !== currentUserId) {
+        const isChatPageActive = location.pathname.toLowerCase().includes('/chat');
+        if (!isChatPageActive) {
+          setUnreadChatCount(prev => prev + 1);
+        }
+      }
+    });
+
+    socket.on("unread_chat_update", (data) => {
+      if (typeof data?.unreadCount === 'number') {
+        fetchUnreadChats();
+      }
+    });
+
     return () => {
       socket.disconnect();
     };
-  }, [currentUserId, unreadCountProp]);
+  }, [currentUserId, unreadCountProp, location.pathname]);
 
   const menuItems = [
     {
@@ -64,6 +94,11 @@ export default function Sidebar({ unreadCountProp }) {
       name: "Search",
       path: `/search/${currentUserId}`,
       icon: Search
+    },
+    {
+      name: "Messages",
+      path: `/chat/${currentUserId}`,
+      icon: MessageSquare
     },
     {
       name: "Notifications",
@@ -121,6 +156,11 @@ export default function Sidebar({ unreadCountProp }) {
                 {item.name === "Notifications" && unreadCount > 0 && (
                   <span className="flex h-5 min-w-5 px-1.5 items-center justify-center rounded-full bg-[#9e4635] text-[11px] font-bold text-white shadow-sm animate-pulse">
                     {unreadCount}
+                  </span>
+                )}
+                {item.name === "Messages" && unreadChatCount > 0 && (
+                  <span className="flex h-5 min-w-5 px-1.5 items-center justify-center rounded-full bg-[#9e4635] text-[11px] font-bold text-white shadow-sm animate-pulse">
+                    {unreadChatCount}
                   </span>
                 )}
               </Link>

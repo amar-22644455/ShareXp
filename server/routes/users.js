@@ -174,9 +174,69 @@ router.post('/CreateXp', async (req, res) => {
   }
 });
 
+// Get user recommendations based on college/institute
+router.get('/users/recommendations', auth, async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    const currentUser = await User.findById(currentUserId).select('institute following');
+
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const followingSet = new Set((currentUser.following || []).map(id => id.toString()));
+    followingSet.add(currentUserId.toString());
+
+    let recommendedUsers = [];
+
+    // 1. Same institute recommendations
+    if (currentUser.institute) {
+      const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const instRegex = new RegExp(`^${escapeRegex(currentUser.institute.trim())}$`, 'i');
+
+      recommendedUsers = await User.find({
+        _id: { $nin: Array.from(followingSet) },
+        institute: instRegex
+      })
+        .select('name username institute profileImage followers')
+        .limit(6)
+        .lean();
+    }
+
+    // 2. Fallback if fewer than 5 recommendations found
+    if (recommendedUsers.length < 5) {
+      const existingIds = new Set([
+        ...Array.from(followingSet),
+        ...recommendedUsers.map(u => u._id.toString())
+      ]);
+
+      const fallbackUsers = await User.find({
+        _id: { $nin: Array.from(existingIds) }
+      })
+        .select('name username institute profileImage followers')
+        .limit(6 - recommendedUsers.length)
+        .lean();
+
+      recommendedUsers = [...recommendedUsers, ...fallbackUsers];
+    }
+
+    res.json({
+      institute: currentUser.institute,
+      recommendations: recommendedUsers
+    });
+  } catch (error) {
+    console.error('Error fetching user recommendations:', error);
+    res.status(500).json({ message: 'Failed to fetch recommendations' });
+  }
+});
+
 // Get user name (Example API)
 router.get('/users/:id', auth, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 

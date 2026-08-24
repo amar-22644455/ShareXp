@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import Button from "@/components/ui/button";
+import { Link } from "react-router-dom";
 import {
   ThumbsUp,
   MessageCircle,
@@ -12,7 +13,9 @@ import {
   Twitter,
   Linkedin,
   Mail,
-  Trash2
+  Trash2,
+  GraduationCap,
+  Sparkles
 } from "lucide-react";
 
 import { useState, useEffect } from "react";
@@ -46,12 +49,21 @@ export default function PostCard({ post, onDelete }) {
 
   const currentUserId = localStorage.getItem("userId");
 
+  const getUserId = (u) => {
+    if (!u) return null;
+    if (typeof u === "object") return u._id || u.id || null;
+    return u;
+  };
+
+  const ownerId = postOwner?._id || postOwner?.id || getUserId(post?.userId);
+  const instituteName = postOwner?.institute || post?.institute || (post?.userId && typeof post.userId === "object" ? post.userId.institute : "");
+
   useEffect(() => {
     if (post) {
       setComments(post.comments || []);
       setLikeCount(post.likeCount || 0);
       setIsLiked(post.isLiked || false);
-      if (typeof post.userId === "object") {
+      if (post.userId && typeof post.userId === "object") {
         setPostOwner(post.userId);
       }
     }
@@ -76,11 +88,13 @@ export default function PostCard({ post, onDelete }) {
 
         // Fetch owner details if they are not already populated as an object
         if (!postOwner && post?.userId) {
-          const ownerId = typeof post.userId === "object" ? post.userId._id : post.userId;
-          const ownerRes = await fetch(`/api/users/${ownerId}`);
-          if (ownerRes.ok) {
-             const ownerData = await ownerRes.json();
-             setPostOwner(ownerData);
+          const fetchedOwnerId = getUserId(post.userId);
+          if (fetchedOwnerId) {
+            const ownerRes = await fetch(`/api/users/${fetchedOwnerId}`);
+            if (ownerRes.ok) {
+               const ownerData = await ownerRes.json();
+               setPostOwner(ownerData);
+            }
           }
         }
       } catch (error) {
@@ -123,7 +137,7 @@ export default function PostCard({ post, onDelete }) {
     setLikeCount(newLiked ? likeCount + 1 : likeCount - 1);
 
     const action = newLiked ? "like" : "unlike";
-    const recipientId = typeof post.userId === "object" ? post.userId._id : post.userId;
+    const recipientId = getUserId(post.userId);
 
     const result = await handlePostAction(action, { recipientId });
     if (!result) {
@@ -141,7 +155,7 @@ export default function PostCard({ post, onDelete }) {
     e.preventDefault();
     if (!comment.trim()) return;
 
-    const recipientId = typeof post.userId === "object" ? post.userId._id : post.userId;
+    const recipientId = getUserId(post.userId);
     const result = await handlePostAction("comment", {
       commentText: comment,
       recipientId
@@ -218,43 +232,70 @@ export default function PostCard({ post, onDelete }) {
 
   if (!post) return null;
 
+  const isOwner = Boolean(
+    currentUserId &&
+      (currentUserId === String(ownerId) ||
+       currentUserId === String(postOwner?._id || postOwner?.id))
+  );
+
   return (
     <Card className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden w-full">
+      {post.isRecommended && post.recommendationReason && (
+        <div className="bg-[#fcf5f2] border-b border-[#edd6cc] px-6 py-2 text-xs font-semibold text-[#9e4635] flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-[#9e4635]" />
+            {post.recommendationReason}
+          </span>
+          <span className="text-[10px] text-gray-400 font-normal">Cold-start discovery</span>
+        </div>
+      )}
       <CardContent className="p-6">
         {/* User Info & Delete Action */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <img
-              src={postOwner?.profileImage || "https://picsum.photos/100"}
-              alt="Profile"
-              className="h-12 w-12 rounded-full object-cover border-2 border-[#edd6cc]"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = "https://picsum.photos/100";
-              }}
-            />
+            <Link to={ownerId ? `/UserProfile/${ownerId}` : '#'}>
+              <img
+                src={postOwner?.profileImage || "https://picsum.photos/100"}
+                alt="Profile"
+                className="h-12 w-12 rounded-full object-cover border-2 border-[#edd6cc] hover:opacity-90 transition-opacity"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "https://picsum.photos/100";
+                }}
+              />
+            </Link>
             <div className="text-left">
-              <h4 className="text-black font-semibold text-lg">{post?.username || "User"}</h4>
-              <span className="text-gray-600 text-sm">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link
+                  to={ownerId ? `/UserProfile/${ownerId}` : '#'}
+                  className="text-black font-semibold text-lg hover:text-[#9e4635] transition-colors no-underline"
+                >
+                  {post?.username || postOwner?.username || "User"}
+                </Link>
+                {instituteName && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-[#9e4635] to-[#d0735e] text-white shadow-sm animate-pulse">
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    {instituteName}
+                  </span>
+                )}
+              </div>
+              <span className="text-gray-600 text-sm block mt-0.5">
                 {formatDate(post.createdAt)}
               </span>
             </div>
           </div>
 
           {/* Delete Button for Owner */}
-          {currentUserId &&
-            (currentUserId === postOwner?._id ||
-              currentUserId === postOwner?.id ||
-              currentUserId === (typeof post.userId === "object" ? post.userId._id : post.userId)) && (
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
-                title="Delete Post"
-              >
-                <Trash2 className={`w-5 h-5 ${isDeleting ? "animate-pulse" : ""}`} />
-              </button>
-            )}
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-gray-100 transition-colors cursor-pointer border-none bg-transparent"
+              title="Delete Post"
+            >
+              <Trash2 className={`w-5 h-5 ${isDeleting ? "animate-pulse" : ""}`} />
+            </button>
+          )}
         </div>
 
         {/* Post Content */}

@@ -7,7 +7,8 @@ export default function LoginXP() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [submitting, setSubmitting] = useState(false);
-    const { login } = useAuth();
+    const [isGuestLoading, setIsGuestLoading] = useState(false);
+    const { login, guestLogin } = useAuth();
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -26,6 +27,21 @@ export default function LoginXP() {
             setError(err.message || "Login failed");
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleGuestLogin = async () => {
+        setError("");
+        setIsGuestLoading(true);
+        try {
+            const data = await guestLogin();
+            if (data?.message) {
+                throw new Error(data.message);
+            }
+        } catch (err) {
+            setError(err.message || "Guest login failed");
+        } finally {
+            setIsGuestLoading(false);
         }
     };
 
@@ -89,17 +105,26 @@ export default function LoginXP() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || isGuestLoading}
               className="mt-1 bg-gray-200 text-black p-2 hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? "Logging in..." : "Login"}
             </button>
           </form>
 
-          <div className="flex flex-col mt-2 gap-2">
-            <p className="text-center font-serif">Haven't started?</p>
+          <div className="flex flex-col mt-4 gap-2 pt-3 border-t border-gray-300/60">
+            <button
+              type="button"
+              onClick={handleGuestLogin}
+              disabled={isGuestLoading || submitting}
+              className="bg-[#9e4635] text-white p-2.5 rounded-lg hover:bg-[#8f3a2c] font-semibold transition shadow-sm disabled:opacity-50 border-none cursor-pointer flex items-center justify-center gap-2"
+            >
+              {isGuestLoading ? "Entering as Guest..." : "Explore as Guest 🚀"}
+            </button>
+
+            <p className="text-center font-serif text-sm mt-2 mb-0">Haven't started?</p>
             <Link to="/CreateXp">
-              <button className="bg-gray-200 w-full text-black p-2 hover:bg-gray-300 transition">
+              <button className="bg-gray-200 w-full text-black p-2 hover:bg-gray-300 transition border-none cursor-pointer">
                 Create Account
               </button>
             </Link>

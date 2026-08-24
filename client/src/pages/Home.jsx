@@ -19,6 +19,9 @@ export default function Home() {
   const currentUserId = localStorage.getItem("userId");
   const [user, setUser] = useState(null);
   const [feedPosts, setFeedPosts] = useState([]); // Combined feed posts
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationInstitute, setRecommendationInstitute] = useState("");
+  const [followedUserIds, setFollowedUserIds] = useState(new Set());
   const [file, setFile] = useState(null);
   const [postText, setPostText] = useState("");
   const [preview, setPreview] = useState(null);
@@ -33,20 +36,20 @@ export default function Home() {
         setLoading(true);
         setError(null);
         
-        // Fetch user and feed sequentially
-        const [userResponse, feedResponse] = await Promise.all([
+        // Fetch user, feed, and user recommendations in parallel
+        const [userResponse, feedResponse, recResponse] = await Promise.all([
           fetch(`/api/Profile/${id}`, {
             method: "GET",
-            headers: {
-              "Content-Type": "application/json"
-            }
+            headers: { "Content-Type": "application/json" }
           }),
           fetch("/api/following", {
             method: "GET",
-            headers: {
-              "Content-Type": "application/json"
-            }
-          })
+            headers: { "Content-Type": "application/json" }
+          }),
+          fetch("/api/users/recommendations", {
+            method: "GET",
+            headers: { "Content-Type": "application/json" }
+          }).catch(() => null)
         ]);
 
         if (userResponse.status === 401 || feedResponse.status === 401) {
@@ -67,6 +70,12 @@ export default function Home() {
 
         setUser(userData);
         setFeedPosts(feedData.posts || []);
+
+        if (recResponse && recResponse.ok) {
+          const recData = await recResponse.json();
+          setRecommendations(recData.recommendations || []);
+          setRecommendationInstitute(recData.institute || "");
+        }
       } catch (err) {
         console.error("Error fetching data:", err);
         setError(err.message || "Failed to load data");
@@ -93,6 +102,28 @@ export default function Home() {
       socket.off("newPost", handleNewPost);
     };
   }, [id]);
+
+  const handleFollowRecommended = async (targetUserId) => {
+    try {
+      setFollowedUserIds(prev => new Set(prev).add(targetUserId));
+      
+      const res = await fetch(`/api/follow/${targetUserId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      if (res.ok) {
+        // Refetch feed to show newly followed user's posts
+        const feedRes = await fetch("/api/following");
+        if (feedRes.ok) {
+          const feedData = await feedRes.json();
+          setFeedPosts(feedData.posts || []);
+        }
+      }
+    } catch (err) {
+      console.error("Error following user:", err);
+    }
+  };
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
@@ -238,62 +269,107 @@ export default function Home() {
       </div>
 
       {/* Right Sidebar */}
-      <div className="hidden md:flex flex-col w-64 h-screen p-4 overflow-y-auto">
+      <div className="hidden md:flex flex-col w-72 h-screen p-4 overflow-y-auto gap-4">
         {user ? (
-          <div className="bg-[#fffaf7] border border-[#edd6cc] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden mt-5">
-            {/* Accent Banner */}
-            <div className="h-12 bg-gradient-to-r from-[#9e4635] to-[#d0735e]" />
-            
-            <div className="p-4 flex flex-col items-center">
-              {/* Avatar overlapping banner */}
-              <div className="-mt-10 mb-3 relative">
-                <img 
-                  src={user?.profileImage || profile} 
-                  alt="Profile" 
-                  className="w-16 h-16 rounded-full object-cover border-4 border-[#fffaf7] shadow-sm"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = profile;
-                  }}
-                />
-              </div>
+          <>
+            {/* Profile Overview Card */}
+            <div className="bg-[#fffaf7] border border-[#edd6cc] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+              {/* Accent Banner */}
+              <div className="h-12 bg-gradient-to-r from-[#9e4635] to-[#d0735e]" />
               
-              {/* User details */}
-              <div className="text-center w-full px-2">
-                <p className="text-black font-semibold text-base truncate">{user.name}</p>
-                <p className="text-gray-500 text-xs mt-0.5">@{user.username}</p>
-              </div>
+              <div className="p-4 flex flex-col items-center">
+                {/* Avatar overlapping banner */}
+                <div className="-mt-10 mb-3 relative">
+                  <img 
+                    src={user?.profileImage || profile} 
+                    alt="Profile" 
+                    className="w-16 h-16 rounded-full object-cover border-4 border-[#fffaf7] shadow-sm"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = profile;
+                    }}
+                  />
+                </div>
+                
+                {/* User details */}
+                <div className="text-center w-full px-2">
+                  <p className="text-black font-semibold text-base truncate">{user.name}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">@{user.username}</p>
+                </div>
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-3 gap-2 w-full mt-4 py-3 border-t border-b border-[#f5e6df] text-center">
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{user.posts?.length || 0}</p>
-                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Posts</p>
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-2 w-full mt-4 py-3 border-t border-b border-[#f5e6df] text-center">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{user.posts?.length || 0}</p>
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Posts</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{user.followers?.length || 0}</p>
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Followers</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{user.following?.length || 0}</p>
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Following</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{user.followers?.length || 0}</p>
-                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Followers</p>
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{user.following?.length || 0}</p>
-                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Following</p>
-                </div>
-              </div>
 
-              {/* Action Button */}
-              <Link 
-                to={`/profile/${id}`} 
-                className="w-full text-center py-2 px-4 mt-4 bg-transparent border border-[#9e4635] text-[#9e4635] hover:bg-[#9e4635] hover:text-white rounded-xl font-medium text-xs transition-all duration-300 flex items-center justify-center gap-1 cursor-pointer"
-              >
-                View Profile
-              </Link>
+                {/* Action Button */}
+                <Link 
+                  to={`/profile/${id}`} 
+                  className="w-full text-center py-2 px-4 mt-4 bg-transparent border border-[#9e4635] text-[#9e4635] hover:bg-[#9e4635] hover:text-white rounded-xl font-medium text-xs transition-all duration-300 flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  View Profile
+                </Link>
+              </div>
             </div>
-          </div>
+
+            {/* Recommendations Widget */}
+            {recommendations.length > 0 && (
+              <div className="bg-[#fffaf7] border border-[#edd6cc] rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 m-0 mb-3 flex items-center justify-between">
+                  <span>Peers from {recommendationInstitute || "Your College"}</span>
+                  <span className="text-[10px] bg-[#9e4635]/10 text-[#9e4635] px-1.5 py-0.5 rounded font-semibold">Suggested</span>
+                </h3>
+
+                <div className="space-y-3">
+                  {recommendations.map((recUser) => {
+                    const isFollowed = followedUserIds.has(recUser._id);
+                    return (
+                      <div key={recUser._id} className="flex items-center justify-between gap-2 text-left">
+                        <Link to={`/UserProfile/${recUser._id}`} className="flex items-center gap-2.5 min-w-0 no-underline text-gray-900">
+                          <img
+                            src={recUser.profileImage || profile}
+                            alt={recUser.username}
+                            className="w-8 h-8 rounded-full object-cover border border-[#edd6cc]"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate m-0 leading-snug">{recUser.name}</p>
+                            <p className="text-[11px] text-gray-500 truncate m-0">@{recUser.username}</p>
+                          </div>
+                        </Link>
+
+                        <button
+                          onClick={() => handleFollowRecommended(recUser._id)}
+                          disabled={isFollowed}
+                          className={`px-3 py-1 rounded-xl text-xs font-medium border-none cursor-pointer transition-all ${
+                            isFollowed
+                              ? "bg-gray-200 text-gray-600"
+                              : "bg-[#9e4635] hover:bg-[#8f3a2c] text-white shadow-sm"
+                          }`}
+                        >
+                          {isFollowed ? "Following" : "Follow"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <p className="text-gray-600 mt-5">Loading user...</p>
         )}
       </div>
     </div>
-
   );
 }

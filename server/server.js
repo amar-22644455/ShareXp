@@ -8,6 +8,7 @@ const authRouter = require('./routes/auth');
 const userRouter = require('./routes/users');
 const postRouter = require('./routes/posts');
 const achievementRouter = require('./routes/achievements');
+const chatRouter = require('./routes/chat');
 const PORT = process.env.PORT || 5000;
 connectDB();
 const app = express();
@@ -140,6 +141,7 @@ app.use('/api', userRouter);
 app.use('/api', authRouter);
 app.use('/api', postRouter);
 app.use("/api", achievementRouter);
+app.use('/api', chatRouter);
 
 const server = http.createServer(app);
 // websocket require actual http server, so we create it using the http module and pass our Express app to it. Then we initialize Socket.IO with this server. This allows us to handle both HTTP requests and WebSocket connections on the same server instance.
@@ -172,11 +174,36 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('join_chat', (chatId) => {
+    if (chatId) {
+      socket.join(chatId);
+    }
+  });
+
+  socket.on('leave_chat', (chatId) => {
+    if (chatId) {
+      socket.leave(chatId);
+    }
+  });
+
+  socket.on('typing', ({ chatId, userId }) => {
+    if (chatId) {
+      socket.to(chatId).emit('user_typing', { chatId, userId });
+    }
+  });
+
+  socket.on('stop_typing', ({ chatId, userId }) => {
+    if (chatId) {
+      socket.to(chatId).emit('user_stop_typing', { chatId, userId });
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected');
   });
 });
 
+// Server listener initialization - Express route ordering updated
 server.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
